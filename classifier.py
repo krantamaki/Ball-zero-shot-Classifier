@@ -68,7 +68,7 @@ class Classifier:
         grouped_points = params[1]
 
         # Check that the model hasn't yet been trained with the label
-        assert label not in [node.label for node in self.nodes]
+        # assert label not in [node.label for node in self.nodes]
 
         X = grouped_points[label]
 
@@ -92,7 +92,7 @@ class Classifier:
         grouped_points = self.__group_points__(data, labels)
 
         # Create a node for each label and train with the datapoints
-        for label, X in grouped_points:
+        for label, X in grouped_points.items():
             params = [label, grouped_points]
             self.__train_node__(params)
 

@@ -8,7 +8,7 @@ from scipy.optimize import minimize
 
 class Node:
 
-    def __init__(self, label, gamma=0.1):
+    def __init__(self, label, gamma=0.01):
         # The label of the node in question
         self.label = label
 
@@ -75,12 +75,13 @@ class Node:
 
         # Optimize for r
         r0 = np.array(1.0)
-        res = minimize(obj, r0, method='trust-constr', bounds=(0, None), constraints=cons)
+        res = minimize(obj, r0, method='trust-constr', bounds=[(0, None)], constraints=cons)
 
         if verbose:
             print(res)
+            print()
 
-        self.__radius = r0[0]
+        self.__radius = float(res.x)
 
         # Go through the points in X and compute the accuracy
         self.__acc = sum([1 for x in X if self.in_ball(x)]) / X.shape[0]
