@@ -1,0 +1,6 @@
+*.txt
+*.png
+*.csv
+.idea
+__pycache__
+main.py
