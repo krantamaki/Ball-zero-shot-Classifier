@@ -1,14 +1,14 @@
 """
-Class defining the ball classifier and associated functions
+Class defining the whole ellipse classifier and associated functions
 """
 import numpy as np
 from multiprocessing import Pool
-from ball_node import BallNode
+from ellipse_node import EllipseNode
 
 
 # TODO: ERROR HANDLING
 
-class BallClassifier:
+class EllipseClassifier:
 
     def __init__(self, empty_space_label="Empty space", base_gamma=1):
         # The label used to define empty space if prediction happened to be it
@@ -79,9 +79,9 @@ class BallClassifier:
         Y = np.concatenate([value for key, value in grouped_points.items() if key != label])
 
         # Train the node
-        new_node = BallNode(label, base_gamma=self.base_gamma)
+        new_node = EllipseNode(label, base_gamma=self.base_gamma)
         new_node.find_center(X)
-        new_node.find_radius(X, Y)
+        new_node.find_matrix(X, Y)
         self.nodes[label] = new_node
 
     def train(self, data, labels):
@@ -109,8 +109,7 @@ class BallClassifier:
         """
         # Group datapoints by label
         grouped_points = self.__group_points__(data, labels)
-        params = [tuple([label, grouped_points]) for label in grouped_points]
-        print(params)
+        params = [[label, grouped_points] for label in grouped_points]
 
         # Train the nodes in parallel
         with Pool() as pool:

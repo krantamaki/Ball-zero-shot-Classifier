@@ -1,12 +1,12 @@
 """
-Class defining an individual node for ball classifier and associated functions
+Class defining an individual node for ellipse classifier and associated functions
 """
 import numpy as np
 from numpy.linalg import norm
 from scipy.optimize import minimize
 
 
-class BallNode:
+class EllipseNode:
 
     def __init__(self, label, base_gamma=1):
         # The label of the node in question
@@ -17,16 +17,16 @@ class BallNode:
         self.base_gamma = base_gamma
 
         # Define private variables
-        self.__center = None  # Center point of the ball. When undefined equals None
-        self.__radius = None  # Radius of the ball. When undefined equals None
+        self.__center = None  # Center point of the ellipse. When undefined equals None
+        self.__matrix = None  # Characteristic matrix of the ellipse. When undefined equals None
         self.__acc = None  # The final training accuracy. When undefined equals None
 
     # Define functions for accessing the private variables
     def center(self):
         return self.__center
 
-    def radius(self):
-        return self.__radius
+    def matrix(self):
+        return self.__matrix
 
     def accuracy(self):
         return self.__acc
@@ -40,18 +40,21 @@ class BallNode:
         """
         self.__center = np.mean(X, axis=0)
 
-    def find_radius(self, X, Y, verbose=True):
+    def find_matrix(self, X, Y, verbose=True):
         """
-        Optimize for the radius - that is solve the constrained nonlinear optimization problem
+        Optimize for the characteristic matrix A - that is solve the constrained nonlinear optimization problem
 
             min. sum(u_i for i in 1, 2, ... , |X|) + sum(v_i for i in 1, 2, ... , |Y|) + gamma * r ^ 2
-            s.t. u_i - r * ||x_i - c||^2 >= 0      for i in 1, 2, ... , |X|
-                 v_i + r * ||y_i - c||^2 - 2 >= 0  for i in 1, 2, ... , |Y|
-                 u_i >= 0                          for i in 1, 2, ... , |X|
-                 v_i >= 0                          for i in 1, 2, ... , |Y|
+            s.t. u_i - (x_i - c)^T A(x_i - c) >= 0      for i in 1, 2, ... , |X|
+                 v_i + (y_i - c)^T A(y_i - c) - 2 >= 0  for i in 1, 2, ... , |Y|
+                 u_i >= 0                               for i in 1, 2, ... , |X|
+                 v_i >= 0                               for i in 1, 2, ... , |Y|
 
             where u_i and v_i are variables created from the relaxation of the original condition,
             c is the center point of the ball and gamma is the robustness factor
+
+        NOTE! For A to define an ellipse must it be a s.p.d matrix. In the case of this function A will be a diagonal
+        matrix with all positive elements on the diagonal
 
         :param X: The data points with the correct label. A numpy.ndarray of shape (m, d)
         :param Y: The data points with the incorrect labels. A numpy.ndarray of shape (n-m, d)
@@ -59,31 +62,36 @@ class BallNode:
         :return: Void
         """
         c = self.center()
+        d = X.shape[1]
         m = X.shape[0]
         n = Y.shape[0]
         gamma = (n + m) * self.base_gamma
 
         # Define the objective function
         def obj(params):
-            return sum([params[i] for i in range(1, m + 1)]) + \
-                   sum([params[i] for i in range(m + 1, m + n + 1)]) + \
-                   gamma * params[0] ** 2
+            return sum([params[i] for i in range(d, m + d)]) + \
+                   sum([params[i] for i in range(m + d, m + n + d)]) + \
+                   gamma * norm(params[0:d]) ** 2
 
         cons = []
         # Define the constraints for x_i in X
         for i in range(0, m):
-            cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i + 1] - params[0] * norm(X[i] - c) ** 2})
-            cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i + 1]})
+            cons.append({'type': 'ineq',
+                         'fun': lambda params, i=i: params[i + d] - np.matmul((X[i] - c).T, np.matmul(np.diag(params[0:d]), (X[i] - c)))})
+            cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i + d]})
 
         # Define the constraints for y_i in Y
         for i in range(0, n):
-            cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i + 1 + m] + params[0] * norm(Y[i] - c) ** 2 - 2})
-            cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i + 1 + m]})
+            cons.append({'type': 'ineq',
+                         'fun': lambda params, i=i: params[i + d + m] + np.matmul((Y[i] - c).T, np.matmul(np.diag(params[0:d]), (Y[i] - c))) - 2})
+            cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i + d + m]})
 
-        cons.append({'type': 'ineq', 'fun': lambda params: params[0]})
+        # Define constraints for the diagonal of A
+        for i in range(0, d):
+            cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i]})
 
         # Optimize for r
-        variables = np.ones((1 + m + n,))
+        variables = np.ones((d + m + n,))
         res = minimize(obj, variables, method='SLSQP', constraints=tuple(cons))
 
         if verbose:
@@ -92,7 +100,7 @@ class BallNode:
 
         # print(f"\nActual solution: {obj(res.x)}\n")
 
-        self.__radius = float(res.x[0])
+        self.__matrix = np.diag(variables[0:d])
 
         # Go through the points in X and compute the accuracy
         self.__acc = sum([1 for x in X if self.in_ball(x)]) / X.shape[0]
@@ -103,7 +111,7 @@ class BallNode:
         :param point: Input point. A numpy.ndarray of shape (d,)
         :return: Boolean
         """
-        return self.__radius * norm(point - self.__center) ** 2 <= 1
+        return np.matmul((point - self.center()).T, np.matmul(self.matrix(), (point - self.center()))) <= 1
 
     def in_ball_with_dist(self, point):
         """
@@ -113,4 +121,4 @@ class BallNode:
         :param point: Input point. A numpy.ndarray of shape (d,)
         :return:
         """
-        return norm(point - self.__center) if self.in_ball(point) else -1.0
+        return np.matmul((point - self.center()).T, np.matmul(self.matrix(), (point - self.center()))) if self.in_ball(point) else -1.0

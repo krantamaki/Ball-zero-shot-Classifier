@@ -4,6 +4,9 @@ Collection of functions for visualizing the results of the classifier
 from sklearn.neural_network import MLPClassifier
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse
+from ellipse_classifier import EllipseClassifier
+from ball_classifier import BallClassifier
 
 colors = ['red', 'blue', 'green', 'grey', 'magenta', 'cyan', 'orange', 'deeppink', 'brown', 'darkviolet']
 
@@ -106,9 +109,9 @@ def viz_classic_neural_net(y, X, neural_net_shape, labels,
         print("\nMLP prediction accuracy is:", len(correct_classifications) / y_test.shape[0])
 
 
-def viz_classifier(classifier, X, y,
-                   axis_names=("x", "y"),
-                   save_path="classifier.png"):
+def viz_ball_classifier(classifier, X, y,
+                        axis_names=("x", "y"),
+                        save_path="ball_classifier.png"):
     """
     Plots the balls (circles) representing each node and the  datapoints passed as
     argument to visualize the performance of the classifier
@@ -119,6 +122,8 @@ def viz_classifier(classifier, X, y,
     :param save_path:
     :return:
     """
+    assert isinstance(classifier, BallClassifier)
+
     # Find the distinct labels
     labels = list(classifier.nodes.keys())
 
@@ -144,6 +149,64 @@ def viz_classifier(classifier, X, y,
                             color=label_color,
                             alpha=0.3, linewidth=1)
         ax.add_patch(circle)
+
+    # Sort the data points by label
+    tuples = [(y[i], X[i][0], X[i][1]) for i in range(y.shape[0])]
+    for label in labels:
+        data_points = np.array([[tup[1], tup[2]] for tup in tuples if tup[0] == label])
+        ax.scatter(data_points[:, 0], data_points[:, 1], c=label_to_color[label], s=50,
+                   edgecolor="white", linewidth=1, label=label)
+
+    ax.set(xlim=(minima[0] - 1, maxima[0] + 1), ylim=(minima[1] - 1, maxima[1] + 1),
+           xlabel=axis_names[0], ylabel=axis_names[1])
+
+    ax.legend(loc='lower right')
+
+    fig.savefig(save_path)
+
+
+def viz_ellipse_classifier(classifier, X, y,
+                           axis_names=("x", "y"),
+                           save_path="ellipse_classifier.png"):
+    """
+    TODO: DESCRIPTION
+    :param classifier:
+    :param X:
+    :param y:
+    :param axis_names:
+    :param save_path:
+    :return:
+    """
+    assert isinstance(classifier, EllipseClassifier)
+
+    # Find the distinct labels
+    labels = list(classifier.nodes.keys())
+
+    # Get the maxima and minima for the columns of X
+    maxima = np.max(X, axis=0)
+    minima = np.min(X, axis=0)
+
+    # Generate color for each label
+    label_to_color = {}
+    if len(labels) <= 10:
+        for i, label in enumerate(labels):
+            label_to_color[label] = colors[i]
+
+    else:
+        raise ValueError("Number of distinct labels exceeds 10")
+
+    fig, ax = plt.subplots()
+
+    # Plot the circles representing the region allocated for each node
+    for node in classifier.nodes.values():
+        label_color = label_to_color[node.label]
+        width = 2 * np.sqrt(node.matrix()[0, 0] ** (- 1))
+        height = 2 * np.sqrt(node.matrix()[1, 1] ** (- 1))
+        # width = node.matrix()[0, 0]
+        # height = node.matrix()[1, 1]
+        ellipse = Ellipse(node.center(), width=width, height=height,
+                          color=label_color, alpha=0.3, linewidth=1)
+        ax.add_patch(ellipse)
 
     # Sort the data points by label
     tuples = [(y[i], X[i][0], X[i][1]) for i in range(y.shape[0])]
