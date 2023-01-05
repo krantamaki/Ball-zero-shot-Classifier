@@ -105,12 +105,20 @@ class BallNode:
         """
         return self.__radius * norm(point - self.__center) ** 2 <= 1
 
+    def dist(self, point):
+        """
+        Computes the distance from the surface of the ball to the given point
+        :param point: Input point. A numpy.ndarray of shape (d,)
+        :return: Floating point value signifying the distance
+        """
+        return norm(point - self.__center) - self.__radius
+
     def in_ball_with_dist(self, point):
         """
         Checks if the inputted point falls within the ball defined in the node
         and returns the distance to the center (as defined by l_2 norm) if that
         is the case and -1 otherwise
         :param point: Input point. A numpy.ndarray of shape (d,)
-        :return:
+        :return: Floating point value signifying the distance
         """
         return norm(point - self.__center) if self.in_ball(point) else -1.0

@@ -111,7 +111,8 @@ def viz_classic_neural_net(y, X, neural_net_shape, labels,
 
 def viz_ball_classifier(classifier, X, y,
                         axis_names=("x", "y"),
-                        save_path="ball_classifier.png"):
+                        save_path="ball_classifier.png",
+                        title_with_gamma=True):
     """
     Plots the balls (circles) representing each node and the  datapoints passed as
     argument to visualize the performance of the classifier
@@ -120,6 +121,7 @@ def viz_ball_classifier(classifier, X, y,
     :param y:
     :param axis_names:
     :param save_path:
+    :param title_with_gamma:
     :return:
     """
     assert isinstance(classifier, BallClassifier)
@@ -159,6 +161,9 @@ def viz_ball_classifier(classifier, X, y,
 
     ax.set(xlim=(minima[0] - 1, maxima[0] + 1), ylim=(minima[1] - 1, maxima[1] + 1),
            xlabel=axis_names[0], ylabel=axis_names[1])
+
+    if title_with_gamma:
+        ax.set_title(f"Used robustness factor: $\gamma$ = {classifier.base_gamma}")
 
     ax.legend(loc='lower right')
 
