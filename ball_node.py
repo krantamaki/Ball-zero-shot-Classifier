@@ -1,20 +1,20 @@
 """
-Class defining an individual node and associated functions
+Class defining an individual node for ball classifier and associated functions
 """
 import numpy as np
 from numpy.linalg import norm
 from scipy.optimize import minimize
 
 
-class Node:
+class BallNode:
 
-    def __init__(self, label, gamma=0.01):
+    def __init__(self, label, base_gamma=1):
         # The label of the node in question
         self.label = label
 
         # Parameter for balancing the need for robustness and correctness
-        assert gamma > 0
-        self.gamma = gamma
+        assert base_gamma > 0
+        self.base_gamma = base_gamma
 
         # Define private variables
         self.__center = None  # Center point of the ball. When undefined equals None
@@ -44,12 +44,14 @@ class Node:
         """
         Optimize for the radius - that is solve the constrained nonlinear optimization problem
 
-            min. sum(u_i for i in 1, 2, ... , |X|) + sum(v_i for i in 1, 2, ... , |Y|) + gamma * r
-            s.t. u_i >= 0                      for i in 1, 2, ... , |X|
-                 v_i >= 0                      for i in 1, 2, ... , |Y|
+            min. sum(u_i for i in 1, 2, ... , |X|) + sum(v_i for i in 1, 2, ... , |Y|) + gamma * r ^ 2
+            s.t. u_i - r * ||x_i - c||^2 >= 0      for i in 1, 2, ... , |X|
+                 v_i + r * ||y_i - c||^2 - 2 >= 0  for i in 1, 2, ... , |Y|
+                 u_i >= 0                          for i in 1, 2, ... , |X|
+                 v_i >= 0                          for i in 1, 2, ... , |Y|
 
-            where u_i >= 1 - r * ||x_i - v||^2, v_i >= r * ||y_i - v||^2 - 1, v is the center point
-            of the ball and gamma is the robustness factor
+            where u_i and v_i are variables created from the relaxation of the original condition,
+            c is the center point of the ball and gamma is the robustness factor
 
         :param X: The data points with the correct label. A numpy.ndarray of shape (m, d)
         :param Y: The data points with the incorrect labels. A numpy.ndarray of shape (n-m, d)
@@ -57,31 +59,40 @@ class Node:
         :return: Void
         """
         v = self.center()
+        m = X.shape[0]
+        n = Y.shape[0]
+        gamma = (n + m) * self.base_gamma
 
         # Define the objective function
-        def obj(r):
-            return sum([1 - r * norm(x - v) ** 2 for x in X]) + \
-                   sum([r * norm(y - v) ** 2 - 1 for y in Y]) + \
-                   self.gamma * r
+        def obj(params):
+            return sum([params[i] for i in range(1, m + 1)]) + \
+                   sum([params[i] for i in range(m + 1, m + n + 1)]) + \
+                   gamma * params[0] ** 2
 
         cons = []
         # Define the constraints for x_i in X
-        for x in X:
-            cons.append({'type': 'ineq', 'fun': lambda r: 1 - r * norm(x - v) ** 2})
+        for i in range(0, m):
+            cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i + 1] - params[0] * norm(X[i] - v) ** 2})
+            cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i + 1]})
 
         # Define the constraints for y_i in Y
-        for y in Y:
-            cons.append({'type': 'ineq', 'fun': lambda r: r * norm(y - v) ** 2 - 1})
+        for i in range(0, n):
+            cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i + 1 + m] + params[0] * norm(Y[i] - v) ** 2 - 2})
+            cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i + 1 + m]})
+
+        cons.append({'type': 'ineq', 'fun': lambda params: params[0]})
 
         # Optimize for r
-        r0 = np.array(1.0)
-        res = minimize(obj, r0, method='trust-constr', bounds=[(0, None)], constraints=cons)
+        variables = np.ones((1 + m + n,))
+        res = minimize(obj, variables, method='SLSQP', constraints=tuple(cons))
 
         if verbose:
             print(res)
             print()
 
-        self.__radius = float(res.x)
+        # print(f"\nActual solution: {obj(res.x)}\n")
+
+        self.__radius = float(res.x[0])
 
         # Go through the points in X and compute the accuracy
         self.__acc = sum([1 for x in X if self.in_ball(x)]) / X.shape[0]

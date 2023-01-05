@@ -110,10 +110,12 @@ def viz_classifier(classifier, X, y,
                    axis_names=("x", "y"),
                    save_path="classifier.png"):
     """
-    Plots the balls (circles) representing each node
+    Plots the balls (circles) representing each node and the  datapoints passed as
+    argument to visualize the performance of the classifier
     :param classifier:
     :param X:
     :param y:
+    :param axis_names:
     :param save_path:
     :return:
     """

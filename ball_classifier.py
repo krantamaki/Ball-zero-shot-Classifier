@@ -1,14 +1,14 @@
 """
-Class defining the whole classifier and associated functions
+Class defining the ball classifier and associated functions
 """
 import numpy as np
 from multiprocessing import Pool
-from node import Node
+from ball_node import BallNode
 
 
 # TODO: ERROR HANDLING
 
-class Classifier:
+class BallClassifier:
 
     def __init__(self, empty_space_label="Empty space"):
         # The label used to define empty space if prediction happened to be it
@@ -76,7 +76,7 @@ class Classifier:
         Y = np.concatenate([value for key, value in grouped_points.items() if key != label])
 
         # Train the node
-        new_node = Node(label)
+        new_node = BallNode(label)
         new_node.find_center(X)
         new_node.find_radius(X, Y)
         self.nodes[label] = new_node
@@ -98,6 +98,7 @@ class Classifier:
 
     def par_train(self, data, labels):
         """
+        TODO: FIX BUG
         Train the model by optimizing the balls for each individual node in parallel.
         :param data: The data array. A numpy.ndarray of shape (n, d)
         :param labels: The label array. A numpy.ndarray of shape (n,)
@@ -106,6 +107,7 @@ class Classifier:
         # Group datapoints by label
         grouped_points = self.__group_points__(data, labels)
         params = [tuple([label, grouped_points]) for label in grouped_points]
+        print(params)
 
         # Train the nodes in parallel
         with Pool() as pool:
