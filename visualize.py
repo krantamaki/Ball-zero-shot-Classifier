@@ -162,12 +162,14 @@ def viz_ball_classifier(classifier, X, y,
     ax.set(xlim=(minima[0] - 1, maxima[0] + 1), ylim=(minima[1] - 1, maxima[1] + 1),
            xlabel=axis_names[0], ylabel=axis_names[1])
 
-    if title_with_gamma:
-        ax.set_title(f"Used robustness factor: $\gamma$ = {classifier.base_gamma}")
-
     ax.legend(loc='lower right')
 
-    fig.savefig(save_path)
+    if title_with_gamma:
+        ax.set_title(f"Used robustness factor: $\gamma$ = {classifier.base_gamma}")
+        fig.savefig(save_path.split('.')[0] + f"_gamma_{classifier.base_gamma}.png")
+
+    else:
+        fig.savefig(save_path)
 
 
 def viz_ellipse_classifier(classifier, X, y,
