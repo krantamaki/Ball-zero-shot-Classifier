@@ -45,8 +45,8 @@ class BallNode:
         Optimize for the radius - that is solve the constrained nonlinear optimization problem
 
             min. sum(u_i for i in 1, 2, ... , |X|) + sum(v_i for i in 1, 2, ... , |Y|) + gamma * r ^ 2
-            s.t. u_i - r * ||x_i - c||^2 >= 0      for i in 1, 2, ... , |X|
-                 v_i + r * ||y_i - c||^2 - 2 >= 0  for i in 1, 2, ... , |Y|
+            s.t. u_i - r^-2 * ||x_i - c||^2 >= 0      for i in 1, 2, ... , |X|
+                 v_i + r^-2 * ||y_i - c||^2 - 2 >= 0  for i in 1, 2, ... , |Y|
                  u_i >= 0                          for i in 1, 2, ... , |X|
                  v_i >= 0                          for i in 1, 2, ... , |Y|
 
@@ -72,12 +72,12 @@ class BallNode:
         cons = []
         # Define the constraints for x_i in X
         for i in range(0, m):
-            cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i + 1] - params[0] * norm(X[i] - c) ** 2})
+            cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i + 1] - params[0] ** (-2) * norm(X[i] - c) ** 2})
             cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i + 1]})
 
         # Define the constraints for y_i in Y
         for i in range(0, n):
-            cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i + 1 + m] + params[0] * norm(Y[i] - c) ** 2 - 2})
+            cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i + 1 + m] + params[0] ** (-2) * norm(Y[i] - c) ** 2 - 2})
             cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i + 1 + m]})
 
         cons.append({'type': 'ineq', 'fun': lambda params: params[0]})
