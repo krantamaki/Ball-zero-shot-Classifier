@@ -44,14 +44,15 @@ class EllipseNode:
         """
         Optimize for the characteristic matrix A - that is solve the constrained nonlinear optimization problem
 
-            min. sum(u_i for i in 1, 2, ... , |X|) + sum(v_i for i in 1, 2, ... , |Y|) + gamma * r ^ 2
+            min. sum(u_i for i in 1, 2, ... , |X|) + sum(v_i for i in 1, 2, ... , |Y|) + gamma * ||w||^2
             s.t. u_i - (x_i - c)^T A(x_i - c) >= 0      for i in 1, 2, ... , |X|
                  v_i + (y_i - c)^T A(y_i - c) - 2 >= 0  for i in 1, 2, ... , |Y|
                  u_i >= 0                               for i in 1, 2, ... , |X|
                  v_i >= 0                               for i in 1, 2, ... , |Y|
 
             where u_i and v_i are variables created from the relaxation of the original condition,
-            c is the center point of the ball and gamma is the robustness factor
+            c is the center point of the ball, gamma is the robustness factor and w is a vector of form
+            w = [lambda_1^(-1/2) lambda_2^(-1/2) ... lambda_n^(-1/2)]^T
 
         NOTE! For A to define an ellipse must it be a s.p.d matrix. In the case of this function A will be a diagonal
         matrix with all positive elements on the diagonal
@@ -69,9 +70,9 @@ class EllipseNode:
 
         # Define the objective function
         def obj(params):
-            return sum([params[i] for i in range(d, m + d)]) + \
-                   sum([params[i] for i in range(m + d, m + n + d)]) + \
-                   gamma * norm(params[0:d]) ** 2
+            return sum(params[d:m+d]) + \
+                   sum(params[m+d:m+n+d]) + \
+                   gamma * sum(params[0:d] ** (-1/4))
 
         cons = []
         # Define the constraints for x_i in X
@@ -100,7 +101,7 @@ class EllipseNode:
 
         # print(f"\nActual solution: {obj(res.x)}\n")
 
-        self.__matrix = np.diag(variables[0:d])
+        self.__matrix = np.diag(res.x[0:d])
 
         # Go through the points in X and compute the accuracy
         self.__acc = sum([1 for x in X if self.in_ball(x)]) / X.shape[0]
