@@ -133,6 +133,9 @@ def viz_ball_classifier(classifier, X, y,
     maxima = np.max(X, axis=0)
     minima = np.min(X, axis=0)
 
+    max_limit = max(maxima)
+    min_limit = min(minima)
+
     # Generate color for each label
     label_to_color = {}
     if len(labels) <= 10:
@@ -159,7 +162,7 @@ def viz_ball_classifier(classifier, X, y,
         ax.scatter(data_points[:, 0], data_points[:, 1], c=label_to_color[label], s=50,
                    edgecolor="white", linewidth=1, label=label)
 
-    ax.set(xlim=(minima[0] - 1, maxima[0] + 1), ylim=(minima[1] - 1, maxima[1] + 1),
+    ax.set(xlim=(min_limit - 1, max_limit + 1), ylim=(min_limit - 1, max_limit + 1),
            xlabel=axis_names[0], ylabel=axis_names[1])
 
     ax.legend(loc='lower right')
@@ -174,7 +177,8 @@ def viz_ball_classifier(classifier, X, y,
 
 def viz_ellipse_classifier(classifier, X, y,
                            axis_names=("x", "y"),
-                           save_path="ellipse_classifier.png"):
+                           save_path="ellipse_classifier.png",
+                           title_with_gamma=True):
     """
     TODO: DESCRIPTION
     :param classifier:
@@ -182,6 +186,7 @@ def viz_ellipse_classifier(classifier, X, y,
     :param y:
     :param axis_names:
     :param save_path:
+    :param title_with_gamma:
     :return:
     """
     assert isinstance(classifier, EllipseClassifier)
@@ -192,6 +197,9 @@ def viz_ellipse_classifier(classifier, X, y,
     # Get the maxima and minima for the columns of X
     maxima = np.max(X, axis=0)
     minima = np.min(X, axis=0)
+
+    max_limit = max(maxima)
+    min_limit = min(minima)
 
     # Generate color for each label
     label_to_color = {}
@@ -207,8 +215,8 @@ def viz_ellipse_classifier(classifier, X, y,
     # Plot the circles representing the region allocated for each node
     for node in classifier.nodes.values():
         label_color = label_to_color[node.label]
-        width = 2 * np.sqrt(node.matrix()[0, 0] ** (- 1))
-        height = 2 * np.sqrt(node.matrix()[1, 1] ** (- 1))
+        width = 2 * node.matrix()[0, 0] ** (-1/2)
+        height = 2 * node.matrix()[1, 1] ** (-1/2)
         # width = node.matrix()[0, 0]
         # height = node.matrix()[1, 1]
         ellipse = Ellipse(node.center(), width=width, height=height,
@@ -222,9 +230,14 @@ def viz_ellipse_classifier(classifier, X, y,
         ax.scatter(data_points[:, 0], data_points[:, 1], c=label_to_color[label], s=50,
                    edgecolor="white", linewidth=1, label=label)
 
-    ax.set(xlim=(minima[0] - 1, maxima[0] + 1), ylim=(minima[1] - 1, maxima[1] + 1),
+    ax.set(xlim=(min_limit - 1, max_limit + 1), ylim=(min_limit - 1, max_limit + 1),
            xlabel=axis_names[0], ylabel=axis_names[1])
 
     ax.legend(loc='lower right')
 
-    fig.savefig(save_path)
+    if title_with_gamma:
+        ax.set_title(f"Used robustness factor: $\gamma$ = {classifier.base_gamma}")
+        fig.savefig(save_path.split('.')[0] + f"_gamma_{classifier.base_gamma}.png")
+
+    else:
+        fig.savefig(save_path)
