@@ -2,6 +2,8 @@
 Class defining the whole ellipse classifier and associated functions
 """
 import numpy as np
+from scipy.special import softmax
+from sklearn.neighbors import NearestNeighbors
 from multiprocessing import Pool
 from ellipse_node import EllipseNode
 
@@ -19,6 +21,13 @@ class EllipseClassifier:
 
         # Dictionary of nodes of form label: str -> node: Node
         self.nodes = {}
+
+        # Dictionary of form label: str -> vector: np.ndarray for holding the semantic space information
+        self.semantic_vectors = {}
+
+        # Helpful constants
+        self.data_dim = None
+        self.sem_dim = None
 
     def predict(self, point):
         """
@@ -93,6 +102,7 @@ class EllipseClassifier:
         """
         # Group datapoints by label
         grouped_points = self.__group_points__(data, labels)
+        self.data_dim = data.shape[1]
 
         # Create a node for each label and train with the datapoints
         for label, X in grouped_points.items():
@@ -114,4 +124,146 @@ class EllipseClassifier:
         # Train the nodes in parallel
         with Pool() as pool:
             pool.imap_unordered(self.__train_node__, params)
+
+    def add_sematic_vectors(self, S, y):
+        """
+        Adds the semantic vectors into memory for use in zero-shot learning and predicting
+        Note! Each label used in training should in the label array and each label can be exactly
+        once in the label array
+        :param S: The semantic data array. A numpy.ndarray of shape (n0, s)
+        :param y: The label array. A numpy.ndarray of shape (n0,)
+        :return: Void
+        """
+        assert y.shape[0] == np.unique(y).shape[0]
+        assert S.shape[0] == y.shape[0]
+        self.sem_dim = S.shape[1]
+
+        # Check that there is a semantic vector for each of the possibly existing nodes
+        if len(self.nodes) != 0:
+            for node in self.nodes:
+                if node.label not in y:
+                    raise RuntimeError("\nSemantic vector not provided for all existing labels")
+
+        # Use the given arrays to create a dictionary and store it in memory
+        sem_dict = {}
+        for i in range(0, y.shape[0]):
+            sem_dict[y[i]] = S[i]
+
+        self.semantic_vectors = sem_dict
+
+    def sem_predict(self, point):
+        """
+        UNTESTED
+        Find the node into which the inputted point falls. Firstly find the approximate semantic vectors for the point
+        and then se 1-nearest neighbour search to find the label
+        :param point: Input point. A numpy.ndarray of shape (d,)
+        :return: Label of the prediction
+        """
+        assert len(self.nodes) != 0
+        assert len(self.semantic_vectors) != 0
+
+        # Compute the distances from the point to the surface of each of the balls
+        dists = [(node.label, node.dist(point)) for node in self.nodes]
+
+        labels = [tup[0] for tup in dists]
+        dists = [tup[1] for tup in dists]
+
+        # Convert the distances to weights
+        """
+        weights = [max(dists) - dist for dist in dists]
+        weights = softmax(weights)
+        """
+        weights = [(dist + 1) ** (-1) for dist in dists]
+        weights = softmax(weights)
+
+        # Compute the weighted average of the semantic vectors
+        avg = np.zeros((self.sem_dim,))
+        for i, label in enumerate(labels):
+            avg += weights[i] * self.semantic_vectors[label]
+
+        # Reconstruct the semantic space matrix and the label vector
+        S = []
+        y = []
+        for label, vector in self.semantic_vectors.items():
+            S.append(vector)
+            y.append(label)
+
+        S = np.array(S)
+        y = np.array(y)
+
+        # Wrap the average in a numpy array
+        x = np.array([avg])
+
+        # Find the 1-nearest neighbour
+        nbrs = NearestNeighbors(n_neighbors=1, algorithm='ball_tree').fit(S)
+        d, i = nbrs.kneighbors(x)
+
+        # Return the label corresponding with the
+        return y[i[0]]
+
+    def sem_test(self, X_test, y_test):
+        """
+        UNTESTED
+        Compute the testing accuracy for a given testing dataset
+        :param X_test: The testing data array. A numpy.ndarray of shape (n, d)
+        :param y_test: The testing label array. A numpy.ndarray of shape (n,)
+        :return: The testing accuracy as a float
+        """
+        assert len(self.nodes) != 0
+        assert len(self.semantic_vectors) != 0
+        assert X_test.shape[0] == y_test.shape[0]
+
+        # Reconstruct the semantic space matrix and the label vector and train the 1-nearest neighbour mode
+        S = []
+        y = []
+        for label, vector in self.semantic_vectors.items():
+            S.append(vector)
+            y.append(label)
+
+        S = np.array(S)
+        y = np.array(y)
+
+        nbrs = NearestNeighbors(n_neighbors=1, algorithm='ball_tree').fit(S)
+
+        # Initialize a counter for correct predictions
+        correct = 0
+
+        # Go over the testing points
+        for i in range(y.shape[0]):
+            point = X_test[i]
+            correct_label = y_test[i]
+
+            # Compute the distances from the point to the surface of each of the balls
+            dists = [(node.label, node.dist(point)) for node in self.nodes]
+
+            labels = [tup[0] for tup in dists]
+            dists = [tup[1] for tup in dists]
+
+            # Convert the distances to weights
+            """
+            weights = [max(dists) - dist for dist in dists]
+            weights = softmax(weights)
+            """
+            weights = [(dist + 1) ** (-1) for dist in dists]
+            weights = softmax(weights)
+
+            # Compute the weighted average of the semantic vectors
+            avg = np.zeros((self.sem_dim,))
+
+            for i, label in enumerate(labels):
+                avg += weights[i] * self.semantic_vectors[label]
+
+            # Wrap the average in a numpy array
+            x = np.array([avg])
+
+            # Find the 1-nearest neighbour
+            d, i = nbrs.kneighbors(x)
+            predicted_label = y[i[0]]
+
+            if predicted_label == correct_label:
+                correct += 1
+
+        # Return the proportion of correct predictions
+        return correct / y.shape[0]
+
 

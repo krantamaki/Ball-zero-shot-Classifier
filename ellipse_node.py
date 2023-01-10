@@ -114,6 +114,14 @@ class EllipseNode:
         """
         return np.matmul((point - self.center()).T, np.matmul(self.matrix(), (point - self.center()))) <= 1
 
+    def dist(self, point):
+        """
+        Computes the distance from the surface of the ellipse to the given point
+        :param point:
+        :return:
+        """
+        return np.matmul((point - self.center()).T, np.matmul(self.matrix(), (point - self.center())))
+
     def in_ball_with_dist(self, point):
         """
         Checks if the inputted point falls within the ball defined in the node
