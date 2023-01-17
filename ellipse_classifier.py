@@ -4,7 +4,7 @@ Class defining the whole ellipse classifier and associated functions
 import numpy as np
 from scipy.special import softmax
 from sklearn.neighbors import NearestNeighbors
-from multiprocessing import Pool
+from multiprocessing import Process, Manager
 from ellipse_node import EllipseNode
 
 
@@ -69,19 +69,13 @@ class EllipseClassifier:
 
         return ret_dict
 
-    def __train_node__(self, params):
+    def __train_node__(self, label, grouped_points):
         """
         Helper function that wraps multiple operations within it so that they can be called in parallel pool
         :param params: Tuple holding the label of the node in question and a dictionary of form label:
         str -> points: numpy.ndarray of shape (m, d) containing all points and labels
         :return: Void
         """
-        label = params[0]
-        grouped_points = params[1]
-
-        # Check that the model hasn't yet been trained with the label
-        # assert label not in [node.label for node in self.nodes]
-
         X = grouped_points[label]
 
         # Combine the rest of the points into one numpy array
@@ -100,14 +94,32 @@ class EllipseClassifier:
         :param labels: The label array. A numpy.ndarray of shape (n,)
         :return: Void
         """
-        # Group datapoints by label
-        grouped_points = self.__group_points__(data, labels)
         self.data_dim = data.shape[1]
 
+        # Group datapoints by label
+        grouped_points = self.__group_points__(data, labels)
+
         # Create a node for each label and train with the datapoints
-        for label, X in grouped_points.items():
-            params = [label, grouped_points]
-            self.__train_node__(params)
+        for label in grouped_points:
+            self.__train_node__(label, grouped_points)
+
+    def __par_train_node__(self, label, grouped_points, ret_dict):
+        """
+        Helper function that wraps multiple operations within it so that they can be called in parallel pool
+        :param params: Tuple holding the label of the node in question and a dictionary of form label:
+        str -> points: numpy.ndarray of shape (m, d) containing all points and labels
+        :return: Void
+        """
+        X = grouped_points[label]
+
+        # Combine the rest of the points into one numpy array
+        Y = np.concatenate([value for key, value in grouped_points.items() if key != label])
+
+        # Train the node
+        new_node = EllipseNode(label, base_gamma=self.base_gamma)
+        new_node.find_center(X)
+        new_node.find_matrix(X, Y)
+        ret_dict[label] = new_node
 
     def par_train(self, data, labels):
         """
@@ -117,13 +129,25 @@ class EllipseClassifier:
         :param labels: The label array. A numpy.ndarray of shape (n,)
         :return: Void
         """
+        self.data_dim = data.shape[1]
+
         # Group datapoints by label
         grouped_points = self.__group_points__(data, labels)
-        params = [[label, grouped_points] for label in grouped_points]
 
-        # Train the nodes in parallel
-        with Pool() as pool:
-            pool.imap_unordered(self.__train_node__, params)
+        # Initialize processes
+        manager = Manager()
+        ret_dict = manager.dict()
+        processes = []
+        for label in grouped_points:
+            process = Process(target=self.__par_train_node__, args=(label, grouped_points, ret_dict))
+            processes.append(process)
+            process.start()
+
+        # Complete the processes
+        for proc in processes:
+            proc.join()
+
+        self.nodes = ret_dict
 
     def add_sematic_vectors(self, S, y):
         """

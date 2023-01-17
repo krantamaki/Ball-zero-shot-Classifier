@@ -72,7 +72,7 @@ class EllipseNode:
         def obj(params):
             return sum(params[d:m+d]) + \
                    sum(params[m+d:m+n+d]) + \
-                   gamma * sum(params[0:d] ** (-1/4))
+                   gamma * sum(params[0:d] ** (-1))  # (-1/4))
 
         cons = []
         # Define the constraints for x_i in X
