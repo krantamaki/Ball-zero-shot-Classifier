@@ -2,22 +2,31 @@
 Class defining the whole ellipse classifier and associated functions
 """
 import numpy as np
+from numpy.linalg import norm
 from scipy.special import softmax
+from scipy.spatial.distance import cosine
 from sklearn.neighbors import NearestNeighbors
 from multiprocessing import Process, Manager
 from ellipse_node import EllipseNode
 
 
-# TODO: ERROR HANDLING
-
 class EllipseClassifier:
 
-    def __init__(self, empty_space_label="Empty space", base_gamma=1):
+    def __init__(self, empty_space_label="Empty space", base_gamma=1, y_multiple=5, scaling_factor=1):
         # The label used to define empty space if prediction happened to be it
         self.empty_space_label = empty_space_label
 
         # Parameter for balancing the need for robustness and correctness
         self.base_gamma = base_gamma
+
+        # As there might be a lot of distinct labels the set Y can go very large so define a multiple that
+        # signifies how many times more points should be in Y compared to X
+        self.y_multiple = y_multiple
+
+        # As the data points might be very close by (as is the case with MEG data) it might be worthwhile to
+        # rescale the points to make the optimization easier for the solvers. Rescaling is done as c * I * x
+        # for every datapoint x, where c is the scaling factor
+        self.scaling_factor = scaling_factor
 
         # Dictionary of nodes of form label: str -> node: Node
         self.nodes = {}
@@ -71,8 +80,9 @@ class EllipseClassifier:
 
     def __train_node__(self, label, grouped_points):
         """
-        Helper function that wraps multiple operations within it so that they can be called in parallel pool
-        :param params: Tuple holding the label of the node in question and a dictionary of form label:
+        Helper function that wraps multiple operations within it
+        :param label: The label of the node to be trained
+        :param grouped_points: The datapoints grouped by label
         str -> points: numpy.ndarray of shape (m, d) containing all points and labels
         :return: Void
         """
@@ -80,6 +90,15 @@ class EllipseClassifier:
 
         # Combine the rest of the points into one numpy array
         Y = np.concatenate([value for key, value in grouped_points.items() if key != label])
+
+        # Take a random sample from set Y
+        if Y.shape[0] > X.shape[0] * self.y_multiple:
+            Y = Y[np.random.randint(Y.shape[0], size=X.shape[0] * self.y_multiple), :]
+
+        # Rescale the datapoints
+        scaler = self.scaling_factor * np.identity(X.shape[1])
+        X = np.array([np.matmul(scaler, x) for x in X])
+        Y = np.array([np.matmul(scaler, y) for y in Y])
 
         # Train the node
         new_node = EllipseNode(label, base_gamma=self.base_gamma)
@@ -106,14 +125,24 @@ class EllipseClassifier:
     def __par_train_node__(self, label, grouped_points, ret_dict):
         """
         Helper function that wraps multiple operations within it so that they can be called in parallel pool
-        :param params: Tuple holding the label of the node in question and a dictionary of form label:
-        str -> points: numpy.ndarray of shape (m, d) containing all points and labels
+        :param label: The label of the node to be trained
+        :param grouped_points: The datapoints grouped by label
+        :param ret_dict: multiprocessing.Manager.dict() to store the return value
         :return: Void
         """
         X = grouped_points[label]
 
         # Combine the rest of the points into one numpy array
         Y = np.concatenate([value for key, value in grouped_points.items() if key != label])
+
+        # Take a random sample from set Y
+        if Y.shape[0] > X.shape[0] * self.y_multiple:
+            Y = Y[np.random.randint(Y.shape[0], size=X.shape[0] * self.y_multiple), :]
+
+        # Rescale the datapoints
+        scaler = self.scaling_factor * np.identity(X.shape[1])
+        X = np.array([np.matmul(scaler, x) for x in X])
+        Y = np.array([np.matmul(scaler, y) for y in Y])
 
         # Train the node
         new_node = EllipseNode(label, base_gamma=self.base_gamma)
@@ -123,7 +152,6 @@ class EllipseClassifier:
 
     def par_train(self, data, labels):
         """
-        TODO: FIX BUG
         Train the model by optimizing the balls for each individual node in parallel.
         :param data: The data array. A numpy.ndarray of shape (n, d)
         :param labels: The label array. A numpy.ndarray of shape (n,)
@@ -149,6 +177,14 @@ class EllipseClassifier:
 
         self.nodes = ret_dict
 
+    def eval(self):
+        """
+        Evaluate the total training accuracy of the model
+        :return: The total training accuracy as a floating point number
+        """
+        assert len(self.nodes) > 0
+        return sum([node.accuracy() for label, node in self.nodes.items()]) / len(self.nodes)
+
     def add_sematic_vectors(self, S, y):
         """
         Adds the semantic vectors into memory for use in zero-shot learning and predicting
@@ -164,8 +200,8 @@ class EllipseClassifier:
 
         # Check that there is a semantic vector for each of the possibly existing nodes
         if len(self.nodes) != 0:
-            for node in self.nodes:
-                if node.label not in y:
+            for label, node in self.nodes.items():
+                if label not in y:
                     raise RuntimeError("\nSemantic vector not provided for all existing labels")
 
         # Use the given arrays to create a dictionary and store it in memory
@@ -219,57 +255,38 @@ class EllipseClassifier:
         x = np.array([avg])
 
         # Find the 1-nearest neighbour
-        nbrs = NearestNeighbors(n_neighbors=1, algorithm='ball_tree').fit(S)
+        nbrs = NearestNeighbors(n_neighbors=1, algorithm='ball_tree', metric='cosine').fit(S)
         d, i = nbrs.kneighbors(x)
 
         # Return the label corresponding with the
         return y[i[0]]
 
     def sem_test(self, X_test, y_test):
-        """
-        UNTESTED
-        Compute the testing accuracy for a given testing dataset
-        :param X_test: The testing data array. A numpy.ndarray of shape (n, d)
-        :param y_test: The testing label array. A numpy.ndarray of shape (n,)
-        :return: The testing accuracy as a float
-        """
         assert len(self.nodes) != 0
         assert len(self.semantic_vectors) != 0
         assert X_test.shape[0] == y_test.shape[0]
-
-        # Reconstruct the semantic space matrix and the label vector and train the 1-nearest neighbour mode
-        S = []
-        y = []
-        for label, vector in self.semantic_vectors.items():
-            S.append(vector)
-            y.append(label)
-
-        S = np.array(S)
-        y = np.array(y)
-
-        nbrs = NearestNeighbors(n_neighbors=1, algorithm='ball_tree').fit(S)
-
-        # Initialize a counter for correct predictions
         correct = 0
 
+        # Scale the datapoints in X_test
+        scaler = self.scaling_factor * np.identity(X_test.shape[1])
+        X_test = np.array([np.matmul(scaler, x) for x in X_test])
+
         # Go over the testing points
-        for i in range(y.shape[0]):
+        for i in range(y_test.shape[0]):
             point = X_test[i]
             correct_label = y_test[i]
 
             # Compute the distances from the point to the surface of each of the balls
-            dists = [(node.label, node.dist(point)) for node in self.nodes]
+            dists = [(label, node.dist(point)) for label, node in self.nodes.items()]
 
             labels = [tup[0] for tup in dists]
             dists = [tup[1] for tup in dists]
 
             # Convert the distances to weights
-            """
             weights = [max(dists) - dist for dist in dists]
             weights = softmax(weights)
-            """
-            weights = [(dist + 1) ** (-1) for dist in dists]
-            weights = softmax(weights)
+            # weights = [(dist + 1) ** (-1) for dist in dists]
+            # weights = softmax(weights)
 
             # Compute the weighted average of the semantic vectors
             avg = np.zeros((self.sem_dim,))
@@ -277,17 +294,49 @@ class EllipseClassifier:
             for i, label in enumerate(labels):
                 avg += weights[i] * self.semantic_vectors[label]
 
-            # Wrap the average in a numpy array
-            x = np.array([avg])
 
-            # Find the 1-nearest neighbour
-            d, i = nbrs.kneighbors(x)
-            predicted_label = y[i[0]]
+            # Do a brute force search for the 1-nearest neighbour
+            """
+            best_dist = -float('inf')
+            best_label = ""
+            for label, vect in self.semantic_vectors.items():
+                if 1 - cosine(avg, vect) > best_dist:
+                    best_label = label
+                    best_dist = 1 - cosine(avg, vect)
 
-            if predicted_label == correct_label:
+            if best_label.strip() == correct_label.strip():
+                if correct_label not in self.nodes:
+                    print("CORRECT ZERO-SHOT PREDICTION\n")
                 correct += 1
+            else:
+                if correct_label not in self.nodes:
+                    print("INCORRECT ZERO-SHOT PREDICTION")
+                print(f"Point to predict: {point}")
+                print(f"Predicted label: {best_label.strip()}; Correct label: {correct_label.strip()}")
+                print(f"Distance to predicted label: {1 - cosine(avg, self.semantic_vectors[best_label])}")
+                print(f"Distance to correct label: {1 - cosine(avg, self.semantic_vectors[correct_label])}\n")
+            """
+            best_dist = float('inf')
+            best_label = ""
+            for label, vect in self.semantic_vectors.items():
+                if norm(avg - vect) < best_dist:
+                    best_label = label
+                    best_dist = norm(avg - vect)
+
+            if best_label.strip() == correct_label.strip():
+                if correct_label not in self.nodes:
+                    print("CORRECT ZERO-SHOT PREDICTION\n")
+                correct += 1
+            else:
+                if correct_label not in self.nodes:
+                    print("INCORRECT ZERO-SHOT PREDICTION")
+                print(f"Point to predict: {point}")
+                print(f"Predicted label: {best_label.strip()}; Correct label: {correct_label.strip()}")
+                print(f"Distance to predicted label: {norm(avg - self.semantic_vectors[best_label])}")
+                print(f"Distance to correct label: {norm(avg - self.semantic_vectors[correct_label])}\n")
 
         # Return the proportion of correct predictions
-        return correct / y.shape[0]
+        return correct / y_test.shape[0]
+
 
 

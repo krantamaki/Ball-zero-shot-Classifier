@@ -63,6 +63,7 @@ class EllipseNode:
         :return: Void
         """
         c = self.center()
+        assert c is not None
         d = X.shape[1]
         m = X.shape[0]
         n = Y.shape[0]
@@ -72,19 +73,19 @@ class EllipseNode:
         def obj(params):
             return sum(params[d:m+d]) + \
                    sum(params[m+d:m+n+d]) + \
-                   gamma * sum(params[0:d] ** (-1))  # (-1/4))
+                   gamma * sum(params[0:d] ** (-1))
 
         cons = []
         # Define the constraints for x_i in X
         for i in range(0, m):
             cons.append({'type': 'ineq',
-                         'fun': lambda params, i=i: params[i + d] - np.matmul((X[i] - c).T, np.matmul(np.diag(params[0:d]), (X[i] - c)))})
+                         'fun': lambda params, i=i: params[i + d] - np.dot(X[i] - c, params[0:d] * (X[i] - c))})
             cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i + d]})
 
         # Define the constraints for y_i in Y
         for i in range(0, n):
             cons.append({'type': 'ineq',
-                         'fun': lambda params, i=i: params[i + d + m] + np.matmul((Y[i] - c).T, np.matmul(np.diag(params[0:d]), (Y[i] - c))) - 2})
+                         'fun': lambda params, i=i: params[i + d + m] + np.dot(Y[i] - c, params[0:d] * (Y[i] - c)) - 2})
             cons.append({'type': 'ineq', 'fun': lambda params, i=i: params[i + d + m]})
 
         # Define constraints for the diagonal of A
@@ -96,17 +97,23 @@ class EllipseNode:
         res = minimize(obj, variables, method='SLSQP', constraints=tuple(cons))
 
         if verbose:
-            print(res)
+            print(f"Results of optimizing for label: '{self.label.rstrip()}'")
+            if res.success:
+                print(f"Success: {res.success}")
+            else:
+                print(f"Success: {res.success}")
+                print(f"Reason: {res.message}")
+            print(f"Found optimum: {res.fun}")
+            print(f"Found diagonal: {res.x[0:d]}")
+            print(f"Other variables:\n{res.x[d:]}")
             print()
-
-        # print(f"\nActual solution: {obj(res.x)}\n")
 
         self.__matrix = np.diag(res.x[0:d])
 
-        # Go through the points in X and compute the accuracy
-        self.__acc = sum([1 for x in X if self.in_ball(x)]) / X.shape[0]
+        # Go through the points in X and Y and compute the accuracy
+        self.__acc = (sum([1 for x in X if self.in_ellipsoid(x)]) + sum([1 for y in Y if not self.in_ellipsoid(y)])) / (m + n)
 
-    def in_ball(self, point):
+    def in_ellipsoid(self, point):
         """
         Checks if the inputted point falls within the ball defined in the node
         :param point: Input point. A numpy.ndarray of shape (d,)
@@ -122,12 +129,4 @@ class EllipseNode:
         """
         return np.matmul((point - self.center()).T, np.matmul(self.matrix(), (point - self.center())))
 
-    def in_ball_with_dist(self, point):
-        """
-        Checks if the inputted point falls within the ball defined in the node
-        and returns the distance to the center (as defined by l_2 norm) if that
-        is the case and -1 otherwise
-        :param point: Input point. A numpy.ndarray of shape (d,)
-        :return:
-        """
-        return np.matmul((point - self.center()).T, np.matmul(self.matrix(), (point - self.center()))) if self.in_ball(point) else -1.0
+
