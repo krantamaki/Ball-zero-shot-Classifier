@@ -3,4 +3,7 @@
 *.csv
 .idea
 __pycache__
+main.py
+main_mnist.py
 testing.py
+*.bin

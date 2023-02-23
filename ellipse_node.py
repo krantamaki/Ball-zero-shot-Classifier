@@ -13,7 +13,7 @@ class EllipseNode:
         self.label = label
 
         # Parameter for balancing the need for robustness and correctness
-        assert base_gamma > 0
+        # assert base_gamma > 0
         self.base_gamma = base_gamma
 
         # Define private variables
@@ -32,6 +32,16 @@ class EllipseNode:
         return self.__acc
 
     # Other functions
+    def add_diagonal_and_center(self, diag, center):
+        """
+
+        :param diag:
+        :param center:
+        :return:
+        """
+        self.__center = center
+        self.__matrix = np.diag(diag)
+
     def find_center(self, X):
         """
         Find the center point of the sphere. This is just the arithmetic mean of the data points
@@ -40,7 +50,7 @@ class EllipseNode:
         """
         self.__center = np.mean(X, axis=0)
 
-    def find_matrix(self, X, Y, verbose=True):
+    def find_matrix(self, X, Y, verbose=False, mod=False):
         """
         Optimize for the characteristic matrix A - that is solve the constrained nonlinear optimization problem
 
@@ -71,9 +81,15 @@ class EllipseNode:
 
         # Define the objective function
         def obj(params):
-            return sum(params[d:m+d]) + \
-                   sum(params[m+d:m+n+d]) + \
-                   gamma * sum(params[0:d] ** (-1))
+            return (n / m) * sum(params[d:m + d]) + \
+                   sum(params[m + d:m + n + d])
+                   # gamma * (max(params[d:m + d]) - max(params[m + d:m + n + d])) ** 2
+                   # gamma * (sum(params[d:m+d]) - sum(params[m+d:m+n+d])) ** 2
+
+        def mod_obj(params):
+            return sum(params[d:m + d]) + \
+                   sum(params[m + d:m + n + d]) + \
+                   gamma * (max(params[d:m + d]) + max(params[m + d:m + n + d])) ** 2
 
         cons = []
         # Define the constraints for x_i in X
@@ -94,17 +110,21 @@ class EllipseNode:
 
         # Optimize for r
         variables = np.ones((d + m + n,))
-        res = minimize(obj, variables, method='SLSQP', constraints=tuple(cons))
+
+        if mod:
+            res = minimize(mod_obj, variables, method='SLSQP', constraints=tuple(cons))
+        else:
+            res = minimize(obj, variables, method='SLSQP', constraints=tuple(cons))
 
         if verbose:
-            print(f"Results of optimizing for label: '{self.label.rstrip()}'")
+            print(f"Results of optimizing for label: '{self.label}'")
             if res.success:
                 print(f"Success: {res.success}")
             else:
                 print(f"Success: {res.success}")
                 print(f"Reason: {res.message}")
             print(f"Found optimum: {res.fun}")
-            print(f"Found diagonal: {res.x[0:d]}")
+            print(f"Found diagonal: \n{res.x[0:d]}")
             print(f"Other variables:\n{res.x[d:]}")
             print()
 
@@ -127,6 +147,6 @@ class EllipseNode:
         :param point:
         :return:
         """
-        return np.matmul((point - self.center()).T, np.matmul(self.matrix(), (point - self.center())))
+        return np.matmul((point - self.__center).T, np.matmul(self.__matrix, (point - self.__center)))
 
 

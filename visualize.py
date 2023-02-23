@@ -117,7 +117,7 @@ def viz_classic_neural_net(y, X, neural_net_shape, labels,
 
 def viz_knearest_neighbors(y, X, labels, n_neighbors,
                            weights="uniform",
-                           axis_names=("$X_1$", "$X_2$"),
+                           axis_names=("x", "y"),
                            verbose=True,
                            show=False,
                            save_path="kneighbors.png",

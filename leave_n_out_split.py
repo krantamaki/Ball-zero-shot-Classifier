@@ -4,7 +4,7 @@ from random import shuffle, sample
 
 def leave_n_out_split(X, y, n,
                       split_ratio=0.25,
-                      test_only_with_excluded=True):
+                      test_only_with_excluded=False):
     """
     TODO: DESCRIPTION
     :param X:

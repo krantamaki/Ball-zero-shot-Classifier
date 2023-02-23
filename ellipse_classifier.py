@@ -211,6 +211,20 @@ class EllipseClassifier:
 
         self.semantic_vectors = sem_dict
 
+    def add_diagonals_and_centers(self, diags, centers, labels):
+        """
+        Function for generating the nodes for already existing diagonals and centerpoints
+        :param diags:
+        :param centers:
+        :param labels:
+        :return: Void
+        """
+        assert diags.shape == centers.shape
+        for i in range(len(labels)):
+            new_node = EllipseNode(labels[i])
+            new_node.add_diagonal_and_center(diags[i], centers[i])
+            self.nodes[labels[i]] = new_node
+
     def sem_predict(self, point):
         """
         UNTESTED
@@ -268,8 +282,9 @@ class EllipseClassifier:
         correct = 0
 
         # Scale the datapoints in X_test
-        scaler = self.scaling_factor * np.identity(X_test.shape[1])
-        X_test = np.array([np.matmul(scaler, x) for x in X_test])
+        if self.scaling_factor != 1:
+            scaler = self.scaling_factor * np.identity(X_test.shape[1])
+            X_test = np.array([np.matmul(scaler, x) for x in X_test])
 
         # Go over the testing points
         for i in range(y_test.shape[0]):
@@ -293,7 +308,6 @@ class EllipseClassifier:
 
             for i, label in enumerate(labels):
                 avg += weights[i] * self.semantic_vectors[label]
-
 
             # Do a brute force search for the 1-nearest neighbour
             """
@@ -323,6 +337,66 @@ class EllipseClassifier:
                     best_label = label
                     best_dist = norm(avg - vect)
 
+            if best_label == correct_label:
+                if correct_label not in self.nodes:
+                    print("CORRECT ZERO-SHOT PREDICTION\n")
+                correct += 1
+            else:
+                if correct_label not in self.nodes:
+                    print("INCORRECT ZERO-SHOT PREDICTION")
+                # print(f"Point to predict: {point}")
+                print(f"Predicted label: {best_label}; Correct label: {correct_label}")
+                # print(f"Distance to predicted label: {norm(avg - self.semantic_vectors[best_label])}")
+                # print(f"Distance to correct label: {norm(avg - self.semantic_vectors[correct_label])}\n")
+
+        # Return the proportion of correct predictions
+        if y_test.shape[0] != 0:
+            return correct / y_test.shape[0]
+
+        return 0.0
+
+    def test(self, X_test, y_test):
+        assert len(self.nodes) != 0
+        assert X_test.shape[0] == y_test.shape[0]
+        correct = 0
+
+        # Scale the datapoints in X_test
+        if self.scaling_factor != 1:
+            scaler = self.scaling_factor * np.identity(X_test.shape[1])
+            X_test = np.array([np.matmul(scaler, x) for x in X_test])
+
+        # Go over the testing points
+        for i in range(y_test.shape[0]):
+            point = X_test[i]
+            correct_label = y_test[i]
+
+            # Compute the distances from the point to the surface of each of the balls
+            dists = [(label, node.dist(point)) for label, node in self.nodes.items()]
+
+            labels = [tup[0] for tup in dists]
+            dists = [tup[1] for tup in dists]
+
+            # Convert the distances to weights
+            weights = [max(dists) - dist for dist in dists]
+            weights = softmax(weights)
+            # weights = [(dist + 1) ** (-1) for dist in dists]
+            # weights = softmax(weights)
+
+            # Compute the weighted average of the semantic vectors
+            avg = np.zeros((X_test.shape[1],))
+
+            for i, label in enumerate(labels):
+                avg += weights[i] * self.nodes[label].center()
+
+            # Do a brute force search for the 1-nearest neighbour
+            """
+            best_dist = -float('inf')
+            best_label = ""
+            for label, vect in self.semantic_vectors.items():
+                if 1 - cosine(avg, vect) > best_dist:
+                    best_label = label
+                    best_dist = 1 - cosine(avg, vect)
+
             if best_label.strip() == correct_label.strip():
                 if correct_label not in self.nodes:
                     print("CORRECT ZERO-SHOT PREDICTION\n")
@@ -332,11 +406,29 @@ class EllipseClassifier:
                     print("INCORRECT ZERO-SHOT PREDICTION")
                 print(f"Point to predict: {point}")
                 print(f"Predicted label: {best_label.strip()}; Correct label: {correct_label.strip()}")
-                print(f"Distance to predicted label: {norm(avg - self.semantic_vectors[best_label])}")
-                print(f"Distance to correct label: {norm(avg - self.semantic_vectors[correct_label])}\n")
+                print(f"Distance to predicted label: {1 - cosine(avg, self.semantic_vectors[best_label])}")
+                print(f"Distance to correct label: {1 - cosine(avg, self.semantic_vectors[correct_label])}\n")
+            """
+            best_dist = float('inf')
+            best_label = ""
+            for label in self.nodes:
+                vect = self.nodes[label].center()
+                if norm(avg - vect) < best_dist:
+                    best_label = label
+                    best_dist = norm(avg - vect)
+
+            if best_label == correct_label:
+                if correct_label not in self.nodes:
+                    print("CORRECT ZERO-SHOT PREDICTION\n")
+                correct += 1
+            else:
+                if correct_label not in self.nodes:
+                    print("INCORRECT ZERO-SHOT PREDICTION")
+                # print(f"Point to predict: {point}")
+                print(f"Predicted label: {best_label}; Correct label: {correct_label}")
+                # print(f"Distance to predicted label: {norm(avg - self.nodes[best_label].center())}")
+                # print(f"Distance to correct label: {norm(avg - self.nodes[correct_label].center())}\n")
 
         # Return the proportion of correct predictions
         return correct / y_test.shape[0]
-
-
 
